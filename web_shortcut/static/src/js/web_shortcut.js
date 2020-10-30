@@ -2,13 +2,14 @@
  * License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl). */
 
 odoo.define('web.shortcut', function (require) {
+    "use strict";
     var Widget = require('web.Widget'),
-        WebClient = require('web.WebClient'),
+           WebClient = require('web.WebClient'),
         ViewManager = require('web.ViewManager'),
         ActionManager = require('web.ActionManager'),
         core = require('web.core'),
         qweb = core.qweb,
-        DataModel = require('web.DataModel'),
+        rpc = require('web.rpc'),
         session = require('web.session'),
         SystrayMenu = require('web.SystrayMenu');
 
@@ -20,7 +21,6 @@ odoo.define('web.shortcut', function (require) {
             this.on('add', this, this.add);
             this.on('display', this, this.display);
             this.on('remove', this, this.remove);
-            this.model = new DataModel('web.shortcut');
         },
         start: function () {
             var self = this;
@@ -34,7 +34,11 @@ odoo.define('web.shortcut', function (require) {
         },
         load: function () {
             var self = this;
-            return this.model.call('get_user_shortcuts', []).done(function (shortcuts) {
+            return rpc.query({
+            model: 'web.shortcut',
+            method: 'get_user_shortcuts',
+            args: [],
+        }).done(function (shortcuts) {
                 self.$el.find('.oe_systray_shortcut_menu').empty();
                 _.each(shortcuts, function (sc) {
                     self.trigger('display', sc);
@@ -43,7 +47,10 @@ odoo.define('web.shortcut', function (require) {
         },
         add: function (sc) {
             var self = this;
-            this.model.call('create', [sc]).then(function (out) {
+            rpc.query({
+            model: 'web.shortcut',
+            method: 'create',
+            args: [sc],}).then(function (out) {
                 self.trigger('load');
             });
         },
@@ -57,12 +64,20 @@ odoo.define('web.shortcut', function (require) {
             var $shortcut = this.$el.find('.oe_systray_shortcut_menu li a[data-id=' + menu_id + ']');
             var shortcut_id = $shortcut.data('shortcut-id');
             $shortcut.remove();
-            this.model.call('unlink', [shortcut_id]);
+            rpc.query({
+            model: 'web.shortcut',
+            method: 'unlink',
+            args: [shortcut_id],
+        });
         },
         click: function ($link) {
             var self = this,
                 action_id = $link.data('id');
-            new DataModel('ir.ui.menu').query(['action']).filter([['id', '=', action_id]]).context(null).all().then(function (menu) {
+                return rpc.query({
+                    model: 'ir.ui.menu',
+                    method: 'search_read',
+                    args: [[['id', '=', action_id]],['action']],
+                }).then(function (menu) {
                 var action_str = menu[0].action;
                 var action_str_parts = action_str.split(',');
                 action_id = parseInt(action_str_parts[1]);
@@ -125,7 +140,6 @@ odoo.define('web.shortcut', function (require) {
         },
         shortcut_check: function (view) {
             var self = this;
-
             // Child view managers
             if (!this.action_manager) {
                 return;
@@ -145,7 +159,7 @@ odoo.define('web.shortcut', function (require) {
             // Check whether it's the 'main' action_manager
             var shortcuts_menu = this.action_manager.webclient && this.action_manager.webclient.shortcut_menu;
             if (shortcuts_menu) {
-                $shortcut_toggle.toggleClass('oe_shortcut_remove', shortcuts_menu.has(self.session.active_id));
+                $shortcut_toggle.toggleClass('oe_shortcut_remove', shortcuts_menu.has(session.active_id));
                 $shortcut_toggle.unbind("click").click(function () {
                     var menu_id = session.active_id;
                     // In the case we come from a parent menu, no action is linked to the menu
